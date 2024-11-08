@@ -1,0 +1,131 @@
+---
+title: "Practice applying R functions"
+author: "Ian Hussey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r, include=FALSE}
+
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+# dependencies
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(purrr)
+
+```
+
+# Simulating the violation of assumptions of a Student's t-test on statistical significance
+
+```{r}
+
+generate_data <- function(n_control, # the parameters are now function arguments
+                          n_intervention,
+                          mean_control,
+                          mean_intervention,
+                          sd_control,
+                          sd_intervention) {
+  
+  data <- 
+    bind_rows(
+      tibble(condition = "control",
+             score = rnorm(n = n_control, mean = mean_control, sd = sd_control)),
+      tibble(condition = "intervention",
+             score = rnorm(n = n_intervention, mean = mean_intervention, sd = sd_intervention))
+    ) |>
+    # control's factor levels must be ordered so that intervention is the first level and control is the second
+    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
+    mutate(condition = fct_relevel(condition, "intervention", "control"))
+  
+  return(data)
+}
+
+analyze_data <- function(data, var_equal) {
+  # dependencies
+  require(effsize)
+  require(tibble)
+  
+  res_t_test <- t.test(formula = score ~ condition, 
+                       data = data,
+                       var.equal = var_equal,
+                       alternative = "two.sided")
+  
+  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
+                                   within = FALSE,
+                                   data = data)
+  
+  res <- tibble(p = res_t_test$p.value, 
+                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
+                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
+                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
+  
+  return(res)
+}
+
+simulation <- 
+  # "using the experiment parameters..."
+  expand_grid(n_control = 50,
+              n_intervention = c(25, 50),
+              mean_control = 0,
+              mean_intervention = 0,
+              sd_control = 1,
+              sd_intervention = c(1, 3),
+              var_equal = TRUE,
+              iteration = 1:5000) |>
+  
+  # ...generate data that meets those parameters...
+  mutate(generated_data = pmap(list(n_control, 
+                                    n_intervention,
+                                    mean_control,
+                                    mean_intervention,
+                                    sd_control,
+                                    sd_intervention),
+                               generate_data)) |>
+  
+  # "... then apply the analysis function to the generated data using the parameters relevant to analysis"
+  mutate(analysis_results = pmap(list(generated_data,
+                                      var_equal), 
+                                 analyze_data))
+
+# summarize across iterations
+simulation |>
+  unnest(analysis_results) |>
+  # ensure all manipulated variables are in the group_by()
+  group_by(n_control,
+           n_intervention,
+           mean_control,
+           mean_intervention,
+           sd_control,
+           sd_intervention,
+           var_equal) |>
+  summarize(proportion_significant = mean(p < .05), .groups = "drop") |>
+  select(n_intervention, mean_intervention, sd_intervention, proportion_significant)
+
+```
+
+# Session info
+
+```{r}
+
+sessionInfo()
+
+```
+
+
