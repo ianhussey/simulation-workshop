@@ -192,15 +192,7 @@ Goal: Convert a *p* value's significance to create APA-format table stars (i.e.,
 # convert a p value to sig stars
 p_value_to_significance_stars <- function(p_value){
   
-  if(p_value >= .05){
-    result <- "ns"
-  } else if(p_value < .05 & p_value >= .01){
-    result <- "*"
-  } else if(p_value < .01 & p_value >= .001){
-    result <- "**"
-  } else if(p_value < .001){
-    result <- "***"
-  } 
+  # do stuff
   
   return(result)
 }
@@ -221,20 +213,7 @@ data_simulated <- tibble(Y = rnorm(n = 100, mean = 0, sd = 1),
                          X = rnorm(n = 100, mean = 0, sd = 1))
 
 
-temp <- cor.test(~ Y + X,
-                 data = data_simulated)
 
-temp$p.value
-
-cor.test(~ Y + X,
-         data = data_simulated)$p.value
-
-cor_p <- function(data){
-  cor.test(~ Y + X,
-           data = data)$p.value
-}
-
-cor_p(data_simulated)
 
 ```
 
@@ -256,34 +235,13 @@ data_simulated <-
             data_simulated_control)
 
 
-# simply
-student_t_p <- function(data) {
-  t.test(formula = score ~ condition, 
-         data = data,
-         var.equal = TRUE,
-         alternative = "two.sided")$p.value
-}
 
-# more verbosely
-student_t_p <- function(data) {
-  
-  res_t_test <- t.test(formula = score ~ condition, 
-                       data = data,
-                       var.equal = TRUE,
-                       alternative = "two.sided")
-  
-  res <- tibble(p = res_t_test$p.value)
-  
-  return(res)
-}
-
-student_t_p(data_simulated)
 
 ```
 
 ## Cohen's d and its confidence intervals 
 
-Goal: Fit an independent Student's t-test using `t.test(var.equal = TRUE)` and extract the p value. Return the results as a data frame with the p value in the column "p".
+Goal: Calculate cohen's d using effsize::cohen.d() and return the estimate and its p values as a data frame.
 
 ```{r}
 
@@ -302,23 +260,6 @@ data_simulated <-
   mutate(condition = fct_relevel(condition, "intervention", "control"))
 
 
-tidy_d <- function(data) {
-  # dependencies
-  require(effsize)
-  require(tibble)
-  
-  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
-                                   within = FALSE,
-                                   data = data)
-  
-  res <- tibble(cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
-                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
-                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
-  
-  return(res)
-}
-
-tidy_d(data_simulated)
 
 ```
 
@@ -341,29 +282,7 @@ data_simulated <-
   mutate(condition = fct_relevel(condition, "intervention", "control"))
 
 
-analyze_data <- function(data) {
-  # dependencies
-  require(effsize)
-  require(tibble)
-  
-  res_t_test <- t.test(formula = score ~ condition, 
-                       data = data,
-                       var.equal = TRUE,
-                       alternative = "two.sided")
-  
-  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
-                                   within = FALSE,
-                                   data = data)
-  
-  res <- tibble(p = res_t_test$p.value, 
-                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
-                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
-                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
-  
-  return(res)
-}
 
-analyze_data(data_simulated)
 
 ```
 
@@ -388,30 +307,7 @@ data_simulated <-
   mutate(condition = fct_relevel(condition, "intervention", "control"))
 
 
-# answer
-generate_data <- function(){
-  data_simulated_intervention <- tibble(condition = "intervention", 
-                                        score = rnorm(n = 50, mean = 0, sd = 1))
-  
-  data_simulated_control <- tibble(condition = "control", 
-                                   score = rnorm(n = 50, mean = 0, sd = 1))
-  
-  data_simulated <- 
-    bind_rows(data_simulated_intervention,
-              data_simulated_control) |>
-    # control's factor levels must be ordered so that intervention is the first level and control is the second
-    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
-    mutate(condition = fct_relevel(condition, "intervention", "control"))
-  
-  return(data_simulated)
-} 
 
-dat <- generate_data()
-analyze_data(dat)
-
-# or
-generate_data() |>
-  analyze_data()
 
 ```
 
@@ -421,32 +317,7 @@ Goal: What if we want to generate data with a different number of participants p
 
 ```{r}
 
-generate_data <- function(n_per_condition){
-  data_simulated_intervention <- tibble(condition = "intervention", 
-                                        score = rnorm(n = n_per_condition, mean = 0, sd = 1))
-  
-  data_simulated_control <- tibble(condition = "control", 
-                                   score = rnorm(n = n_per_condition, mean = 0, sd = 1))
-  
-  data_simulated <- 
-    bind_rows(data_simulated_intervention,
-              data_simulated_control) |>
-    # control's factor levels must be ordered so that intervention is the first level and control is the second
-    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
-    mutate(condition = fct_relevel(condition, "intervention", "control"))
-  
-  return(data_simulated)
-}  
 
-dat <- generate_data(n_per_condition = 50)
-nrow(dat)
-
-dat <- generate_data(n_per_condition = 100)
-nrow(dat)
-
-# or
-generate_data(n_per_condition = 50) |>
-  analyze_data()
 
 ```
 
@@ -456,34 +327,7 @@ Goal: Rewrite the data generation function to make it even more flexible: make a
 
 ```{r}
 
-generate_data <- function(n_control, # the parameters are now function arguments
-                          n_intervention,
-                          mean_control,
-                          mean_intervention,
-                          sd_control,
-                          sd_intervention) {
-  
-  data <- 
-    bind_rows(
-      tibble(condition = "control",
-             score = rnorm(n = n_control, mean = mean_control, sd = sd_control)),
-      tibble(condition = "intervention",
-             score = rnorm(n = n_intervention, mean = mean_intervention, sd = sd_intervention))
-    ) |>
-    # control's factor levels must be ordered so that intervention is the first level and control is the second
-    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
-    mutate(condition = fct_relevel(condition, "intervention", "control"))
-  
-  return(data)
-}
 
-generate_data(n_control = 50,
-              n_intervention = 50,
-              mean_control = 0,
-              mean_intervention = .5,
-              sd_control = 1,
-              sd_intervention = 1) |>
-  analyze_data()
 
 ```
 
