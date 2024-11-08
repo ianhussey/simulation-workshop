@@ -21,6 +21,12 @@ All materials are public domain under a CC-0 1.0 licence. You may therefore use 
 
 # TODO
 
+week 1
+
+- create copy without answers
+- make 4 - simulating the impact of the violation of assumptions of a students t test, using code from general structure lesson. what property is distorted? p values. when? only when heterogeneous variances and also different sample sizes.
+- add old lesson 4 on skew normal distributions if needed - distorted p values only when different distributions between conditoins, not when normality is violated generally. however, distorted effect sizes.
+
 Week 2
 
 - mvnorm()
