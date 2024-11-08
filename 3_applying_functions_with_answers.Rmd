@@ -1,0 +1,529 @@
+---
+title: "Practice applying R functions"
+author: "Ian Hussey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r, include=FALSE}
+
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+```{r}
+
+# dependencies
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(purrr)
+
+# functions
+interpret_cohens_d <- function(cohens_d) {
+  # checks
+  if (!is.numeric(cohens_d)) {
+    stop("The Cohen's d value must be numeric.")
+  }
+  
+  # requirements
+  require(dplyr)
+  require(tibble)
+
+  # do stuff
+  result <- data.frame(d = abs(cohens_d)) |>
+    mutate(interpretation = case_when(d < .2 ~ "very small",
+                                      d >= .2 & d < .5 ~ "small",
+                                      d >= .5 & d < .8 ~ "medium", 
+                                      d >= .8 ~ "large")) |>
+    pull(interpretation)
+  
+  # return result
+  return(result)
+}
+
+```
+
+# 'Do it lots of times': calling functions built to take a single input value on multiple input values
+
+I.e., just as we need to do in our simulations.
+
+## Method 1: using `lapply()`
+
+One of base R's `apply()` functions for exactly this.
+
+Note that the input is a vector and the output is a list of numerics, which is tricky to work with.
+
+```{r}
+
+# define vector with multiple valid values of cohen's d
+cohens_d_values <- c(0.1, 0.2, 0.5, 0.8, 0.99, -0.55)
+
+# use lapply to apply the function to each element of the vector
+res <- lapply(X = cohens_d_values, FUN = interpret_cohens_d)
+
+res
+
+class(res)
+
+```
+
+## Method 2: using `purrr::map()`
+
+Note that the input is a vector and the output is a list of numerics, which is tricky to work with.
+
+```{r}
+
+# use map to map the function onto each element of the vector
+res <- map(cohens_d_values, interpret_cohens_d)
+
+res
+
+class(res)
+
+```
+
+NB: same result as lapply, but it is built to be used in more tidyverse-like workflows, as we see next.
+
+## Method 3: using `purrr::map()` in a tidy workflow
+
+Note that the input and output are a data frame, which is easier to work with further within a tidy workflow.
+
+```{r}
+
+# generate data
+dat <- tibble(cohens_d = cohens_d_values) 
+
+# apply function 
+res <- dat |>
+  mutate(interpretation = map(cohens_d, interpret_cohens_d)) |>
+  unnest(interpretation) # we use unnest for reasons we'll discuss later
+
+res
+
+```
+
+NB: input and output are now data frames, passed via pipes, so pmap() can be used in a fully tidyverse workflow.
+
+# Nested data frames
+
+```{r}
+
+# define data generation function
+generate_data <- function(n_per_condition){
+  require(forcats)
+  require(dplyr)
+  
+  generated_data <- 
+    bind_rows(
+      tibble(condition = "intervention", 
+             score = rnorm(n = n_per_condition, mean = 0, sd = 1)),
+      tibble(condition = "control", 
+             score = rnorm(n = n_per_condition, mean = 0, sd = 1)),
+    ) |>
+    # control's factor levels must be ordered so that intervention is the first level and control is the second
+    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
+    mutate(condition = fct_relevel(condition, "intervention", "control"))
+  
+  return(generated_data)
+} 
+
+# apply function 
+data_n_per_condition <- tibble(n_per_condition = seq(from = 50, to = 100, by = 10)) 
+
+res <- data_n_per_condition |>
+  mutate(simulated_data = map(n_per_condition, generate_data)) 
+
+```
+
+# Tidy workflows to generate and analyze data
+
+```{r}
+
+# define data generation function
+generate_data <- function(n_per_condition){
+  require(forcats)
+  require(dplyr)
+  
+  generated_data <- 
+    bind_rows(
+      tibble(condition = "intervention", 
+             score = rnorm(n = n_per_condition, mean = 0, sd = 1)),
+      tibble(condition = "control", 
+             score = rnorm(n = n_per_condition, mean = 0, sd = 1)),
+    ) |>
+    # control's factor levels must be ordered so that intervention is the first level and control is the second
+    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
+    mutate(condition = fct_relevel(condition, "intervention", "control"))
+  
+  return(generated_data)
+} 
+
+analyze_data <- function(data) {
+  # dependencies
+  require(effsize)
+  require(tibble)
+  
+  res_t_test <- t.test(formula = score ~ condition, 
+                       data = data,
+                       var.equal = TRUE,
+                       alternative = "two.sided")
+  
+  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
+                                   within = FALSE,
+                                   data = data)
+  
+  res <- tibble(p = res_t_test$p.value, 
+                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
+                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
+                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
+  
+  return(res)
+}
+
+# apply function 
+data_n_per_condition <- tibble(n_per_condition = seq(from = 50, to = 100, by = 10)) 
+
+sim_dat <- data_n_per_condition |>
+  mutate(simulated_data = map(n_per_condition, generate_data)) 
+
+sim_res <- sim_dat |>
+  mutate(results = map(simulated_data, analyze_data)) 
+
+sim_res_unnested <- sim_res |>
+  unnest(results)
+
+# summarize the results in some way. eg show that confidence intervals get narrower as sample size goes up:
+sim_res_unnested |>
+  mutate(ci_width = round(cohens_d_ci_upper - cohens_d_ci_lower, 2)) |>
+  select(n_per_condition, ci_width)
+
+```
+
+Written more succinctly:
+
+```{r}
+
+sim_res <- tibble(n_per_condition = seq(from = 50, to = 100, by = 10)) |>
+  mutate(simulated_data = map(n_per_condition, generate_data)) |>
+  mutate(results = map(simulated_data, analyze_data)) 
+
+sim_res |>
+  unnest(results) |>
+  mutate(ci_width = round(cohens_d_ci_upper - cohens_d_ci_lower, 2)) |>
+  select(n_per_condition, ci_width)
+
+```
+
+## Inspect the `sim_res` object
+
+It retains all intermediate steps, both data sets and results for each condition run. These can be accessed after the fact if you want or need.
+
+This can be extremely useful for a) understanding a simulation, b) debugging your simulation, and c) reusing steps. For example, you might want to generate data once and then analyze it multiple different ways. 
+
+```{r}
+
+sim_res$simulated_data[[1]]
+
+sim_res$simulated_data[[1]] |>
+  analyze_data()
+
+```
+
+# Mapping multiple inputs
+
+Simulations usually require us to make the code more abstract and flexible so that many conditions can be studied.
+
+Right now, our data generation and analysis functions use only a single input. We have previously written a data generation function that has multiple inputs (all Ns, Ms, and SDs). To use functions with multiple inputs in a tidy workflow, we can use the pmap() function (parallel-map) instead of the map() function.
+
+Note that the first argument passed to pmap() must be a list. Ie whereas map(input, function); pmap(list(input1, input2, ... inputN), function).
+
+```{r}
+
+generate_data <- function(n_control, # the parameters are now function arguments
+                          n_intervention,
+                          mean_control,
+                          mean_intervention,
+                          sd_control,
+                          sd_intervention) {
+  
+  data <- 
+    bind_rows(
+      tibble(condition = "control",
+             score = rnorm(n = n_control, mean = mean_control, sd = sd_control)),
+      tibble(condition = "intervention",
+             score = rnorm(n = n_intervention, mean = mean_intervention, sd = sd_intervention))
+    ) |>
+    # control's factor levels must be ordered so that intervention is the first level and control is the second
+    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
+    mutate(condition = fct_relevel(condition, "intervention", "control"))
+  
+  return(data)
+}
+
+sim_res <- 
+  tibble(n_control = 50,
+         n_intervention = 50,
+         mean_control = 0,
+         mean_intervention = 0.4,
+         sd_control = 1,
+         sd_intervention = 1) |>
+  mutate(simulated_data = pmap(list(n_control,
+                                    n_intervention,
+                                    mean_control,
+                                    mean_intervention,
+                                    sd_control,
+                                    sd_intervention), 
+                               generate_data)) 
+
+```
+
+IMPORTANT: the inputs in the list passed to the function are passed by order not by name etc., so you must ensure that you are matching the list element's order to the function's inputs by order. It is relatively easy to mix this up and use SDs as Means and vice-versa. 
+
+## Practice: alter the data analysis function to take multiple inputs
+
+Currently the data analysis function runs a Student t-test. Make it run either a Student (var.equal = TRUE) or a Welch's t-test (var.equal = FALSE) based on the input variable `var_equal`.
+
+Use this function: generate data and then analyze it both ways. 
+
+```{r}
+
+# alter this function
+analyze_data <- function(data) {
+  # dependencies
+  require(effsize)
+  require(tibble)
+  
+  res_t_test <- t.test(formula = score ~ condition, 
+                       data = data,
+                       var.equal = TRUE,
+                       alternative = "two.sided")
+  
+  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
+                                   within = FALSE,
+                                   data = data)
+  
+  res <- tibble(p = res_t_test$p.value, 
+                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
+                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
+                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
+  
+  return(res)
+}
+
+# answer
+analyze_data <- function(data, var_equal) {
+  # dependencies
+  require(effsize)
+  require(tibble)
+  
+  res_t_test <- t.test(formula = score ~ condition, 
+                       data = data,
+                       var.equal = var_equal,
+                       alternative = "two.sided")
+  
+  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
+                                   within = FALSE,
+                                   data = data)
+  
+  res <- tibble(p = res_t_test$p.value, 
+                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
+                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
+                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
+  
+  return(res)
+}
+
+set.seed(42) # to generate the same data both times, we'll set the seed
+
+sim_res_equal_var <- 
+  tibble(n_control = 50,
+         n_intervention = 50,
+         mean_control = 0,
+         mean_intervention = 0.4,
+         sd_control = 1,
+         sd_intervention = 1,
+         var_equal = TRUE) |>
+  mutate(simulated_data = pmap(list(n_control,
+                                    n_intervention,
+                                    mean_control,
+                                    mean_intervention,
+                                    sd_control,
+                                    sd_intervention), 
+                               generate_data)) |>
+  mutate(analysis_results = pmap(list(simulated_data,
+                                      var_equal), 
+                               analyze_data))
+
+
+set.seed(42) # to generate the same data both times, we'll set the seed
+
+sim_res_unequal_var <- 
+  tibble(n_control = 50,
+         n_intervention = 50,
+         mean_control = 0,
+         mean_intervention = 0.4,
+         sd_control = 1,
+         sd_intervention = 1,
+         var_equal = FALSE) |>
+  mutate(simulated_data = pmap(list(n_control,
+                                    n_intervention,
+                                    mean_control,
+                                    mean_intervention,
+                                    sd_control,
+                                    sd_intervention), 
+                               generate_data)) |>
+  mutate(analysis_results = pmap(list(simulated_data,
+                                      var_equal), 
+                               analyze_data))
+
+sim_res <- 
+  bind_rows(sim_res_equal_var,
+            sim_res_unequal_var) |>
+  unnest(analysis_results)
+
+sim_res |>
+  select(var_equal, p)
+
+```
+
+# Generating combinations of conditions and many iterations using `expand_grid()`
+
+Two of the key steps in a simulation, 4 ('do it lots of times') and 5 ('make it an experiment'), can be done efficiently using `expand_grid()` (if making a fully-factorial design; see Siepe et al. 2023).
+
+```{r}
+
+experiment_parameters_grid <- expand_grid(
+  n_control = 50,
+  n_intervention = 50,
+  mean_control = 0,
+  mean_intervention = c(0, 0.5),
+  sd_control = 1,
+  sd_intervention = 1,
+  var_equal = c(TRUE, FALSE),
+  iteration = 1:100 # note this is a series not an integer, i.e., "1:100" not "100", as "100" would mean just one iteration called "100".
+)
+
+```
+
+- Check your learning: why can you not simply swap out data.frame() or tibble() here instead of expand_grid()? 
+
+# Putting it all together
+
+The key steps of simulation:
+
+1. Generate (tidy) data
+2. Analyze it (and provide tidy output)
+3. Do this many times
+4. Summarize across iterations
+5. Make it an experiment
+
+```{r}
+
+# alter this function
+analyze_data <- function(data) {
+  # dependencies
+  require(effsize)
+  require(tibble)
+  
+  res_t_test <- t.test(formula = score ~ condition, 
+                       data = data,
+                       var.equal = TRUE,
+                       alternative = "two.sided")
+  
+  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
+                                   within = FALSE,
+                                   data = data)
+  
+  res <- tibble(p = res_t_test$p.value, 
+                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
+                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
+                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
+  
+  return(res)
+}
+
+# answer
+analyze_data <- function(data, var_equal) {
+  # dependencies
+  require(effsize)
+  require(tibble)
+  
+  res_t_test <- t.test(formula = score ~ condition, 
+                       data = data,
+                       var.equal = var_equal,
+                       alternative = "two.sided")
+  
+  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
+                                   within = FALSE,
+                                   data = data)
+  
+  res <- tibble(p = res_t_test$p.value, 
+                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
+                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
+                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
+  
+  return(res)
+}
+
+simulation <- 
+  # "using the experiment parameters..."
+  expand_grid(n_control = 50,
+              n_intervention = 50,
+              mean_control = 0,
+              mean_intervention = c(0, 0.5),
+              sd_control = 1,
+              sd_intervention = 1,
+              var_equal = c(TRUE, FALSE),
+              iteration = 1:1000) |>
+  
+  # ...generate data that meets those parameters...
+  mutate(generated_data = pmap(list(n_control, 
+                                    n_intervention,
+                                    mean_control,
+                                    mean_intervention,
+                                    sd_control,
+                                    sd_intervention),
+                               generate_data)) |>
+  
+  # "... then apply the analysis function to the generated data using the parameters relevant to analysis"
+  mutate(analysis_results = pmap(list(generated_data,
+                                      var_equal), 
+                                 analyze_data))
+
+# summarize across iterations
+simulation |>
+  unnest(analysis_results) |>
+  # ensure all manipulated variables are in the group_by()
+  group_by(n_control,
+           n_intervention,
+           mean_control,
+           mean_intervention,
+           sd_control,
+           sd_intervention,
+           var_equal) |>
+  summarize(proportion_significant = mean(p < .05), .groups = "drop") |>
+  select(mean_intervention, var_equal, proportion_significant)
+
+```
+
+# Session info
+
+```{r}
+
+sessionInfo()
+
+```
+
+
