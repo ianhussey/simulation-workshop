@@ -1,5 +1,5 @@
 ---
-title: "Practice applying R functions"
+title: "Simulate the violation of assumption of homogeneity of variances"
 author: "Ian Hussey"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
@@ -29,6 +29,9 @@ library(dplyr)
 library(tidyr)
 library(tibble)
 library(purrr)
+library(janitor)
+library(knitr)
+library(kableExtra)
 
 ```
 
@@ -49,32 +52,19 @@ generate_data <- function(n_control, # the parameters are now function arguments
              score = rnorm(n = n_control, mean = mean_control, sd = sd_control)),
       tibble(condition = "intervention",
              score = rnorm(n = n_intervention, mean = mean_intervention, sd = sd_intervention))
-    ) |>
-    # control's factor levels must be ordered so that intervention is the first level and control is the second
-    # this ensures that positive cohen's d values refer to intervention > control and not the other way around.
-    mutate(condition = fct_relevel(condition, "intervention", "control"))
+    ) 
   
   return(data)
 }
 
 analyze_data <- function(data, var_equal) {
-  # dependencies
-  require(effsize)
-  require(tibble)
   
   res_t_test <- t.test(formula = score ~ condition, 
                        data = data,
                        var.equal = var_equal,
                        alternative = "two.sided")
   
-  res_cohens_d <- effsize::cohen.d(formula = score ~ condition,  # new addition: also fit cohen's d
-                                   within = FALSE,
-                                   data = data)
-  
-  res <- tibble(p = res_t_test$p.value, 
-                cohens_d = res_cohens_d$estimate,  # new addition: save cohen's d and its 95% CIs to the results tibble
-                cohens_d_ci_lower = res_cohens_d$conf.int["lower"],
-                cohens_d_ci_upper = res_cohens_d$conf.int["upper"])
+  res <- tibble(p = res_t_test$p.value)
   
   return(res)
 }
@@ -105,7 +95,7 @@ simulation <-
                                  analyze_data))
 
 # summarize across iterations
-simulation |>
+simulation_results <- simulation |>
   unnest(analysis_results) |>
   # ensure all manipulated variables are in the group_by()
   group_by(n_control,
@@ -116,7 +106,13 @@ simulation |>
            sd_intervention,
            var_equal) |>
   summarize(proportion_significant = mean(p < .05), .groups = "drop") |>
-  select(n_intervention, mean_intervention, sd_intervention, proportion_significant)
+  select(mean_control, mean_intervention, sd_control, sd_intervention, n_control, n_intervention, proportion_significant) 
+
+# print table
+simulation_results |>
+  mutate_if(is.numeric, round_half_up, digits = 2) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
 
 ```
 
