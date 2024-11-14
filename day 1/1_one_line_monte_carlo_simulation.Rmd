@@ -1,0 +1,115 @@
+---
+title: "One-line Monte Carlo simulation"
+author: "Ian Hussey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r, include=FALSE}
+
+# set default chunk options
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+
+# disable scientific notation
+options(scipen = 999) 
+
+```
+
+# Simulate normal data
+
+Draw data from a normally distributed population and plot it using `rnorm()`
+
+```{r}
+
+set.seed(42)
+runif(n = 4, min = 1, max = 10) |> round()
+
+rnorm(n = 2500, m = 0, sd = 1) |> mean()
+
+rnorm(n = 20, m = 0, sd = 1) |> 
+  hist()
+
+
+dat <- tibble(X1 = rnorm(n = 100),
+              X2 = rnorm(n = 100),
+              X3 = rnorm(n = 100))
+
+lm(formula = X1 ~ X2 + X3, 
+   data = dat)
+
+```
+
+# Fit a t test 
+
+to the generated data
+
+```{r}
+
+set.seed(42)
+t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))
+
+```
+
+# Extract the p value
+
+Fit a t test to generated data and extract the p value
+
+```{r}
+
+set.seed(42)
+t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value
+
+```
+
+# Do this generate-and-analyze many times
+
++ plot the p values
+
+```{r}
+
+res <- replicate(1000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value)
+
+res |> hist()
+
+```
+
+# Increase the number of iterations 
+
+Why is the distribution more uniform?
+
+```{r}
+
+res <- replicate(100000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value)
+
+res |> hist()
+
+```
+
+
+
+```{r}
+
+replicate(100000, t.test(rnorm(n = 25, m = 0.2, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
+  hist()
+
+replicate(100000, t.test(rnorm(n = 25, m = 0.5, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
+  hist()
+
+replicate(100000, t.test(rnorm(n = 25, m = 0.8, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
+  hist()
+
+
+replicate(100000, t.test(rnorm(n = 25, m = 0.05, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
+  hist()
+
+
+```
+
+

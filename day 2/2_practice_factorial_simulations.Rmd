@@ -1,0 +1,288 @@
+---
+title: "Simulate data for factorial designs and practice writing simulations"
+author: "Ian Hussey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+
+# dependencies ----
+library(faux) # for simulating data
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(parameters)
+library(afex) # for fitting ANOVAs more easily
+library(purrr) 
+library(janitor)
+library(knitr)
+library(kableExtra)
+
+```
+
+# Generate and analyze single data sets
+
+## Example 1: a between two groups design with null effects
+
+### Generate tidy data 
+
+Generate data from a null population effect (mu in 0 in both conditions). This is the method we used last week, which constructs the data sets manually.
+
+```{r}
+
+generated_data <- 
+  bind_rows(
+    tibble(condition = "control",
+           score = rnorm(n = n_control, mean = mean_control, sd = sd_control)),
+    tibble(condition = "intervention",
+           score = rnorm(n = n_intervention, mean = mean_intervention, sd = sd_intervention))
+  )
+
+```
+
+This time use the {faux} library:
+
+```{r}
+
+generated_data <- 
+  sim_design(between = list(condition = c("control", "intervention")), 
+             mu = 0, # 0 for all conditions: null effects
+             sd = 1, 
+             n = 100, 
+             dv = "outcome",
+             plot = FALSE)
+
+```
+
+This time, generate data from a medium population effect size. e.g., sd = 1 in both conditions, difference in mu = 0.5 (i.e., Cohen's d = 0.5).
+
+```{r}
+
+generated_data <- 
+  sim_design(between = list(condition = c("control", "intervention")), 
+             mu = c(0, 0.5),
+             sd = 1, 
+             n = 100, 
+             dv = "outcome",
+             plot = FALSE)
+
+```
+
+### Analyze with a t-test and return tidy results
+
+```{r}
+
+# fit Welch's independent t-test
+fit <- t.test(outcome ~ condition, data = generated_data) 
+
+# extract data into a tidy format
+res <- parameters(fit) |>
+  as_tibble() |>
+  select(estimate = Difference, ci_lower = CI_low, ci_upper = CI_high, t, df = df_error, p)
+
+res |>
+  mutate_if(is.numeric, round_half_up, digits = 3) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+
+```
+
+### Analyze with an ANOVA and return tidy results
+
+```{r}
+
+# fit ANOVA and calculate effect sizes
+fit <- aov_ez(id = "id",
+              dv = "outcome",
+              between = "condition",
+              data = generated_data,
+              anova_table = list(es = c("ges", "pes")))
+
+# extract data into a tidy format
+# note that {parameters} is bad at extracting 
+res <- fit$anova_table |>
+  as.data.frame() |>
+  rownames_to_column(var = "effect") |>
+  select(effect, df1 = "num Df", df2 = "den Df", mse = "MSE", F = "F", p = "Pr(>F)", partial_eta2 = "pes", generalized_eta2 = "ges")
+
+res |>
+  mutate_if(is.numeric, round_half_up, digits = 3) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+
+```
+
+## Example 2: a mixed within-between design
+
+### Generate tidy data 
+
+```{r}
+
+between <- list(condition = c("control", "intervention"))
+
+within <- list(timepoint = c("pre", "post"))
+
+mu <- data.frame(control      = c(22, 22),
+                 intervention = c(22, 17),
+                 row.names = within$timepoint)
+
+generated_data <- 
+  sim_design(within = within, 
+             between = between, 
+             n = 100, 
+             mu = mu, 
+             sd = 8, 
+             r = .5, # correlation between within subject variables (can be matrix to be more specific)
+             dv = "bdi_sumscore",
+             #empirical = FALSE, # if FALSE then mu, sd, and r specify the population parameters. if TRUE then they specify the sample parameters.
+             long = TRUE,
+             plot = FALSE) |>
+  # optionally round the DV to make them more realistic
+  mutate(bdi_sumscore = round_half_up(bdi_sumscore))
+
+```
+
+### Analyze with a RM-ANOVA and return tidy results
+
+```{r}
+
+# fit RM-ANOVA and calculate effect sizes
+fit <- aov_ez(id = "id",
+              dv = "bdi_sumscore",
+              between = "condition",
+              within = "timepoint",
+              data = generated_data,
+              anova_table = list(es = c("ges", "pes")))
+
+# extract data into a tidy format
+res <- fit$anova_table |>
+  as.data.frame() |>
+  rownames_to_column(var = "effect") |>
+  select(effect, df1 = "num Df", df2 = "den Df", mse = "MSE", F = "F", p = "Pr(>F)", partial_eta2 = "pes", generalized_eta2 = "ges")
+
+res |>
+  mutate_if(is.numeric, round_half_up, digits = 3) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+
+```
+
+# Simulation exercises
+
+## Empty skeleton of a simulation
+
+```{r eval=FALSE}
+
+# define generate data function ----
+generate_data <- function() { 
+
+  # do stuff
+  
+  return()
+}
+
+# define data analysis function ----
+analyse <- function() {
+  
+  # do stuff
+
+  return()
+}
+
+
+# set seed
+set.seed(42)
+
+
+# simulation conditions ----
+experiment_parameters_grid <- expand_grid(
+  
+  # conditions here
+  
+  iteration = 1:100
+)
+
+
+# run simulation ----
+simulation <- 
+  # using the experiment parameters
+  experiment_parameters_grid |>
+  
+  # generate data using the data generating function and the parameters relevant to data generation
+  mutate(data = pmap(list(),
+                     generate_data)) |>
+  
+  # apply the analysis function to the generated data using the parameters relevant to analysis
+  mutate(results = pmap(list(data),
+                        analyse))
+
+
+# summarize results ----
+simulation_results <- simulation |>
+  unnest(results) |>
+  group_by() |> # group_by() should contain the manipulated variables in experiment_parameters_grid
+  summarize() # summarize a parameter of interest, eg the proportion of significant p values to estimate power or the false positive rate (eg `mean(p < .05)`), or the mean effect size.
+  
+```
+
+## The statistical power of a Student's t-test
+
+Create a simulation that estimates the statistical power of a Student's t-test to detect small, medium, and large Cohen's d effect sizes, with sample sizes of 25, 50, 75, or 100 per condition.
+
+To do this, you'll have to:
+
+- Create a data generation function, which a) generates tidy data, b) generates data of the right shape to be passed to your analysis function, and c) is flexible enough to vary the parameters mentioned above. 
+- Create an analysis function which takes tidy data, analyzes it, and returns tidy results.
+- Set up the simulation parameters and iterations using `expand_grid()`
+- Executes the simulation by passing the parameters to the data generation function via a `pmap()` call, and then passes the data to the analysis function via another `pmap()` call.
+- Summarizes the results for each of the simulation's factorial design cells across the iterations.
+
+
+
+## The impact of violating the assumptions of homogeneity of variance on the false positive rate of a Student's t-test's
+
+Adapt the code from the above exercise. Set the population effect size to 0 (identical values of mu). Set the sample size in one group to 20 and the other group to 80. Set the SD for one group to be 0.5 and the other group 1.5 (i.e., violate both homogeneity of variances and use an imbalanced design). Calculate the false positive rate, i.e., the proportion of data sets that produce a significant result. How much does this violation of assumptions inflate the false positive rate by above the alpha value (.05)?
+
+
+
+## The false positive rate of a 2X2 mixed within-between RM-ANOVA
+
+Generate data for a 2X2 mixed within-between factorial design where all population effects are null. Analyze this data with a RM-ANOVA. Calculate the false-positive rate across all three tests (both main effects and the interaction), ie what proportion of data sets demonstrate at least one significant p value. Set N = 1000 per group.
+
+
+
+## The false positive rate of a 7X2X2X2X2X2 between groups ANOVA
+
+Adapt the code from the above exercise to instead generate a 7X2X2X2X2X2 design. Again, all population effects are null. Set N = 40 per group. This mimics the design of a study I consulted for. What is the false positive rate across all effects?
+
+When you have this working, try to extend the simulation to apply familywise error corrections using Holm's method, i.e. using `p.adjust(p_values, method = "holm")`. These should ensure that the false positive rate approximates the alpha value.
+
+
+
+# Resources for further learning
+
+- You can find {faux}'s [vignette for factorial designs here](https://debruine.github.io/faux/articles/sim_design.html).
+- Note that you can also [generate data for continuous predictors](https://debruine.github.io/faux/articles/continuous.html). 
+- While more complex, you can also [simulate data for multilevel models](https://debruine.github.io/faux/articles/sim_mixed.html) or for [other probability distributions](https://debruine.github.io/faux/articles/distributions.html).  
+
+# Session info
+
+```{r}
+
+sessionInfo()
+
+```
+
+
