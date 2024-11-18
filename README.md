@@ -31,4 +31,5 @@ Week 2
 
 - mvnorm()
 - lavaan::simulate_data()
-- 
+
+NB files higlighted in red (on my local machine only) either have small corrections to be made to them or include partial answers that need to be removed for future courses or have notes for content to be added for future courses.

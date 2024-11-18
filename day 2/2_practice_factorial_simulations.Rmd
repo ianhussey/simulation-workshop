@@ -19,6 +19,7 @@ knitr::opts_chunk$set(message = FALSE,
 ```{r}
 
 # dependencies ----
+# devtools::install_github("debruine/faux") # might not be on CRAN, can be installed by running this
 library(faux) # for simulating data
 library(dplyr)
 library(tidyr)
@@ -45,9 +46,9 @@ Generate data from a null population effect (mu in 0 in both conditions). This i
 generated_data <- 
   bind_rows(
     tibble(condition = "control",
-           score = rnorm(n = n_control, mean = mean_control, sd = sd_control)),
+           score = rnorm(n = 50, mean = 0, sd = 1)),
     tibble(condition = "intervention",
-           score = rnorm(n = n_intervention, mean = mean_intervention, sd = sd_intervention))
+           score = rnorm(n = 50, mean = 0, sd = 1))
   )
 
 ```
@@ -249,7 +250,81 @@ To do this, you'll have to:
 - Executes the simulation by passing the parameters to the data generation function via a `pmap()` call, and then passes the data to the analysis function via another `pmap()` call.
 - Summarizes the results for each of the simulation's factorial design cells across the iterations.
 
+```{r eval=FALSE}
 
+# define generate data function ----
+generate_data <- function(population_es, n_per_group) { 
+
+  res <- sim_design(between = list(condition = c("control", "intervention")), 
+                    mu = c(0, population_es), 
+                    sd = 1, 
+                    n = n_per_group, 
+                    dv = "score",
+                    plot = FALSE)
+  
+  return(res)
+}
+
+# define data analysis function ----
+analyse <- function(data, var_equal) {
+  
+  res_t_test <- t.test(formula = score ~ condition, 
+                       data = data,
+                       var.equal = var_equal,
+                       alternative = "two.sided")
+  
+  res <- tibble(p = res_t_test$p.value)
+  
+  return(res)
+}
+
+
+# set seed
+set.seed(42)
+
+
+# simulation conditions ----
+experiment_parameters_grid <- expand_grid(
+  population_es = c(.2, .5, .8), 
+  n_per_group = c(25, 50, 75, 100),
+  var_equal = TRUE,
+  iteration = 1:5000
+)
+
+
+# run simulation ----
+simulation <- 
+  # using the experiment parameters
+  experiment_parameters_grid |>
+  
+  # generate data using the data generating function and the parameters relevant to data generation
+  mutate(data = pmap(list(population_es, 
+                          n_per_group),
+                     generate_data)) |>
+  
+  # apply the analysis function to the generated data using the parameters relevant to analysis
+  mutate(results = pmap(list(data, var_equal),
+                        analyse))
+
+
+# summarize results ----
+simulation_results <- simulation |>
+  unnest(results) |>
+  group_by(population_es, 
+           n_per_group,
+           var_equal) |> # group_by() should contain the manipulated variables in experiment_parameters_grid
+  #summarize() # summarize a parameter of interest, eg the proportion of significant p values to estimate power or the false positive rate (eg `mean(p < .05)`), or the mean effect size.
+  summarize(proportion_significant = mean(p < .05),
+            se_proportion_significant = std.error(p < .05),
+            .groups = "drop")
+
+
+simulation_results |>
+  mutate_if(is.numeric, round_half_up, digits = 2) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+  
+```
 
 ## The impact of violating the assumptions of homogeneity of variance on the false positive rate of a Student's t-test's
 
@@ -261,7 +336,24 @@ Adapt the code from the above exercise. Set the population effect size to 0 (ide
 
 Generate data for a 2X2 mixed within-between factorial design where all population effects are null. Analyze this data with a RM-ANOVA. Calculate the false-positive rate across all three tests (both main effects and the interaction), ie what proportion of data sets demonstrate at least one significant p value. Set N = 1000 per group.
 
+```{r}
 
+# summarize results ----
+simulation_results <- simulation |>
+  unnest(results) |>
+  group_by(n_per_group, iteration) |>
+  summarize(smallest_p = min(p)) |>
+  group_by(n_per_group) |> 
+  summarize(proportion_significant = mean(smallest_p < .05),
+            se_proportion_significant = std.error(smallest_p < .05),
+            .groups = "drop")
+
+simulation_results |>
+  mutate_if(is.numeric, round_half_up, digits = 2) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+
+```
 
 ## The false positive rate of a 7X2X2X2X2X2 between groups ANOVA
 
@@ -276,6 +368,9 @@ When you have this working, try to extend the simulation to apply familywise err
 - You can find {faux}'s [vignette for factorial designs here](https://debruine.github.io/faux/articles/sim_design.html).
 - Note that you can also [generate data for continuous predictors](https://debruine.github.io/faux/articles/continuous.html). 
 - While more complex, you can also [simulate data for multilevel models](https://debruine.github.io/faux/articles/sim_mixed.html) or for [other probability distributions](https://debruine.github.io/faux/articles/distributions.html).  
+
+
+parallel processing: {future}; {purrr} + future = {furrr}
 
 # Session info
 

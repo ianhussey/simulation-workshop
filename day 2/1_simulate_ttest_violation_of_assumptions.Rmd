@@ -36,9 +36,40 @@ library(kableExtra)
 
 ```
 
+# Practice expand_grid()
+
+```{r}
+
+# temp <- tibble(n_control = rep(c(25, 50), 2500)
+#                n_intervention = 25,
+#                mean_control = 0,
+#                mean_intervention = rep(c(0, .2, .5, .8), 1250)
+#                sd_control = 1,
+#                sd_intervention = c(1, 3),
+#                var_equal = TRUE,
+#                iteration = 1:5000)
+
+
+temp2 <- expand_grid(n_control = c(25, 50), 
+                     n_intervention = c(25, 50),
+                     iteration = 1:5000)
+
+temp2 <- expand_grid(n_control = c(25, 50), 
+                     iteration = 1:5000) |>
+  mutate(n_itervention = n_control)
+
+temp2 <- expand_grid(n_control = c(25, 50), 
+                     n_intervention = c(25, 50),
+                     iteration = 1:5000) |>
+  filter(n_control == n_intervention)
+
+```
+
 # Simulating the violation of assumptions of a Student's t-test on statistical significance
 
 ```{r}
+
+set.seed(42)
 
 generate_data <- function(n_control, 
                           n_intervention,
@@ -46,6 +77,9 @@ generate_data <- function(n_control,
                           mean_intervention,
                           sd_control,
                           sd_intervention) {
+  
+  require(dplyr)
+  require(tibble)
   
   data <- 
     bind_rows(
@@ -72,13 +106,13 @@ analyse <- function(data, var_equal) {
 
 simulation <- 
   # "using the experiment parameters..."
-  expand_grid(n_control = 50,
+  expand_grid(n_control = 1:500,
               n_intervention = c(25, 50),
               mean_control = 0,
               mean_intervention = 0,
               sd_control = 1,
               sd_intervention = c(1, 3),
-              var_equal = TRUE,
+              var_equal = c(TRUE, FALSE),
               iteration = 1:5000) |>
   
   # ...generate data that meets those parameters...
@@ -109,7 +143,8 @@ simulation_results <- simulation |>
   summarize(proportion_significant = mean(p < .05),
             se_proportion_significant = std.error(p < .05),
             .groups = "drop") |>
-  select(mean_control, mean_intervention, sd_control, sd_intervention, n_control, n_intervention, proportion_significant, se_proportion_significant) 
+  select(mean_control, mean_intervention, sd_control, sd_intervention, n_control, n_intervention, var_equal,
+         proportion_significant, se_proportion_significant) 
 
 # print table
 simulation_results |>
@@ -117,6 +152,8 @@ simulation_results |>
   kable(align = "r") |>
   kable_classic(full_width = FALSE)
 
+
+beepr:
 ```
 
 # Making conclusions
@@ -128,6 +165,22 @@ Is the above simulation enough to make (general) conclusions about what conditio
 Number of iterations in a simulation study is comparable to number of participants in a real-world study. Best reporting practices in simulation studies (e.g., Siepe et al. 2024) are to consider the precision of Monte Carlo estimates, e.g., using the Standard Error.
 
 Change the number of iterations and observe the impact on the SE and the stability of the estimates (given that no seed was set).
+
+# Discussion points
+
+add set seed
+
+add var_equal FALSE
+
+# Handle acceptable errors
+
+```{r}
+
+possibly_analyse <- purrr::possibly(analyse, otherwise = NA)
+
+# purrr::safely()
+
+```
 
 # Session info
 
