@@ -192,6 +192,26 @@ lavaan::simulateData(model = mod_mediation, sample.nobs = 100) %>%
            sizeMan = 10)
 title(main = "Model used in analysis: mediation", adj = 0)
 
+
+
+# mediation reversed
+mod_mediation <- "X ~ M + Y; M ~ Y"
+
+layout_matrix <- matrix(c(-1,  0,
+                           0,  1,
+                           1,  0), 
+                        ncol = 2, 
+                        byrow = TRUE)
+
+lavaan::simulateData(model = mod_mediation, sample.nobs = 100) %>%
+  sem(model = mod_mediation, data = .) |>
+  semPaths(whatLabels = "diagram", 
+           layout = layout_matrix, 
+           residuals = FALSE,
+           edge.label.cex = 1.2, 
+           sizeMan = 10)
+title(main = "Other possible models: reverse mediation", adj = 0)
+
 ```
 
 ## Simulate
