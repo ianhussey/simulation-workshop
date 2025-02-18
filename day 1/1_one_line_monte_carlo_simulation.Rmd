@@ -4,12 +4,17 @@ author: "Ian Hussey"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
+    code_download: true
     code_folding: show
     highlight: haddock
     theme: flatly
     toc: yes
     toc_float: yes
 ---
+
+# License
+
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.en)
 
 ```{r, include=FALSE}
 
@@ -22,61 +27,64 @@ options(scipen = 999)
 
 ```
 
-# Simulate normal data
+# One line Monte Carlo simulation
+
+Answering the question "what is the distribution of *p*-values under the null hypothesis?"
+
+```{r}
+
+set.seed(42)
+
+hist(replicate(100000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value))
+
+```
+
+This is a complete Monte Carlo simulation. But how is it constructed? Let's built it up more slowly.
+
+# Generate normally distributed data
 
 Draw data from a normally distributed population and plot it using `rnorm()`
 
 ```{r}
 
 set.seed(42)
-runif(n = 4, min = 1, max = 10) |> round()
 
-rnorm(n = 2500, m = 0, sd = 1) |> mean()
-
-rnorm(n = 20, m = 0, sd = 1) |> 
+rnorm(n = 50, m = 0, sd = 1) |> 
   hist()
-
-
-dat <- tibble(X1 = rnorm(n = 100),
-              X2 = rnorm(n = 100),
-              X3 = rnorm(n = 100))
-
-lm(formula = X1 ~ X2 + X3, 
-   data = dat)
 
 ```
 
-# Fit a t test 
+# Generate two normally distributed data sets and fit a *t*-test 
 
-to the generated data
+Note the population means are equivalent. What does a *t*-test test for?
 
 ```{r}
 
 set.seed(42)
+
 t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))
 
 ```
 
-# Extract the p value
-
-Fit a t test to generated data and extract the p value
+# Generate two normally distributed data sets and fit a *t*-test and extract the *p*-value
 
 ```{r}
 
 set.seed(42)
+
 t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value
 
 ```
 
-# Do this generate-and-analyze many times
+# Do this generate-analyze-extract many times
 
-+ plot the p values
+Using the `replicate()` function, and plot the *p*-values using `hist()`.
 
 ```{r}
 
-res <- replicate(1000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value)
+set.seed(42)
 
-res |> hist()
+hist(replicate(1000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value))
 
 ```
 
@@ -86,30 +94,40 @@ Why is the distribution more uniform?
 
 ```{r}
 
-res <- replicate(100000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value)
+set.seed(42)
 
-res |> hist()
+hist(replicate(100000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0, sd = 1))$p.value))
 
 ```
 
+# Compare with distribution of *p*-values when population means are not equal
 
+'Small', 'medium' and 'large' differences in population means.
 
 ```{r}
 
-replicate(100000, t.test(rnorm(n = 25, m = 0.2, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
-  hist()
+set.seed(42)
 
-replicate(100000, t.test(rnorm(n = 25, m = 0.5, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
-  hist()
-
-replicate(100000, t.test(rnorm(n = 25, m = 0.8, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
-  hist()
-
-
-replicate(100000, t.test(rnorm(n = 25, m = 0.05, sd = 1), rnorm(n = 25, m = 0, sd = 1))$p.value) |>
-  hist()
-
+hist(replicate(100000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0.2, sd = 1))$p.value))
+hist(replicate(100000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0.5, sd = 1))$p.value))
+hist(replicate(100000, t.test(rnorm(n = 50, m = 0, sd = 1), rnorm(n = 50, m = 0.8, sd = 1))$p.value))
 
 ```
+
+# Check your learning
+
+- What are the five core components of a Monte Carlo simulation?
+- Can you mentally match these five components onto the above code (sometimes in different chunks!) to understand how, together, they answer the question "what is the distribution of *p*-values under the null vs. alternative hypothesis?"
+
+# Session info
+
+```{r}
+
+sessionInfo()
+
+```
+
+
+
 
 
